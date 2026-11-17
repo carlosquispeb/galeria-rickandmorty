@@ -2,6 +2,7 @@ const API = "https://rickandmortyapi.com/api/character";
 
 let paginaActual = 1;
 let totalPaginas = 42;
+let cargando = false; 
 
 const grid = document.getElementById("grid-personajes");
 const cajaError = document.getElementById("mensaje-error");
@@ -10,20 +11,37 @@ const btnSiguiente = document.getElementById("btn-siguiente");
 const textoPagina = document.getElementById("texto-pagina");
 const modal = new bootstrap.Modal(document.getElementById("modalDetalle"));
 
-// Función auxiliar para el color del punto con clases de Bootstrap
-const colorEstadoBootstrap = (status) => {
-    if (status === "Alive") return "bg-success";   // Verde
-    if (status === "Dead") return "bg-danger";     // Rojo
-    return "bg-secondary";                         // Gris
+// 1. Traducir el estado al español y devolver su color de Bootstrap
+const obtenerEstadoEsp = (status) => {
+    if (status === "Alive") return { texto: "Vivo", color: "bg-success" };
+    if (status === "Dead") return { texto: "Muerto", color: "bg-danger" };
+    return { texto: "Desconocido", color: "bg-secondary" };
 };
 
-// 1. Cargar lista paginada
+
+const obtenerGeneroEsp = (gender) => {
+    if (gender === "Male") return "Masculino";
+    if (gender === "Female") return "Femenino";
+    if (gender === "Genderless") return "Sin género";
+    return "Desconocido";
+};
+
 async function cargarPersonajes(pagina = 1) {
+    if (cargando) return;
+    cargando = true;
+
+    // Desactivar botones mientras carga para no saturar la API
+    btnAnterior.disabled = true;
+    btnSiguiente.disabled = true;
     cajaError.classList.add("d-none");
     grid.innerHTML = `<div class="col-12 text-center py-5"><div class="spinner-border text-primary"></div></div>`;
 
     try {
         const respuesta = await fetch(`${API}?page=${pagina}`);
+        
+        if (respuesta.status === 429) {
+            throw new Error("Demasiadas peticiones seguidas. Espera 5 segundos y vuelve a intentar.");
+        }
         if (!respuesta.ok) {
             throw new Error("No se pudieron cargar los personajes de la API.");
         }
@@ -34,16 +52,17 @@ async function cargarPersonajes(pagina = 1) {
 
         let html = "";
         datos.results.forEach(p => {
-            const bgPunto = colorEstadoBootstrap(p.status);
+            const estado = obtenerEstadoEsp(p.status);
 
             html += `
                 <div class="col">
                     <div class="card h-100 border-secondary">
-                        <img src="${p.image}" class="card-img-top" alt="${p.name}">
+                        <img src="${p.image}" loading="lazy" class="card-img-top" alt="${p.name}"
+                             onerror="this.src='https://rickandmortyapi.com/api/character/avatar/19.jpeg'">
                         <div class="card-body d-flex flex-column">
                             <h5 class="card-title fw-bold mb-1">${p.name}</h5>
                             <p class="card-text small mb-3">
-                                <span class="d-inline-block rounded-circle ${bgPunto} p-1 me-2"></span>${p.status} - ${p.species}
+                                <span class="d-inline-block rounded-circle ${estado.color} p-1 me-2"></span>${estado.texto} - ${p.species}
                             </p>
                             <div class="mt-auto">
                                 <small class="text-body-secondary d-block">Última ubicación:</small>
@@ -67,10 +86,15 @@ async function cargarPersonajes(pagina = 1) {
         grid.innerHTML = "";
         cajaError.textContent = error.message;
         cajaError.classList.remove("d-none");
+       
+        btnAnterior.disabled = paginaActual <= 1;
+        btnSiguiente.disabled = paginaActual >= totalPaginas;
+    } finally {
+        cargando = false;
     }
 }
 
-// 2. Abrir Modal con detalles del personaje
+
 async function verDetalle(id) {
     const titulo = document.getElementById("modal-titulo");
     const cuerpo = document.getElementById("modal-cuerpo");
@@ -86,7 +110,8 @@ async function verDetalle(id) {
         }
 
         const p = await respuesta.json();
-        const bgPunto = colorEstadoBootstrap(p.status);
+        const estado = obtenerEstadoEsp(p.status);
+        const genero = obtenerGeneroEsp(p.gender);
         const tipo = p.type ? p.type : "Sin tipo";
 
         const fecha = new Date(p.created);
@@ -107,10 +132,10 @@ async function verDetalle(id) {
                             <tr><td class="text-secondary">ID</td><td>${p.id}</td></tr>
                             <tr>
                                 <td class="text-secondary">Estado</td>
-                                <td><span class="d-inline-block rounded-circle ${bgPunto} p-1 me-2"></span>${p.status}</td>
+                                <td><span class="d-inline-block rounded-circle ${estado.color} p-1 me-2"></span>${estado.texto}</td>
                             </tr>
                             <tr><td class="text-secondary">Especie</td><td>${p.species}</td></tr>
-                            <tr><td class="text-secondary">Género</td><td>${p.gender}</td></tr>
+                            <tr><td class="text-secondary">Género</td><td>${genero}</td></tr>
                             <tr><td class="text-secondary">Tipo</td><td>${tipo}</td></tr>
                             <tr><td class="text-secondary">Origen</td><td>${p.origin.name}</td></tr>
                             <tr><td class="text-secondary">Última ubicación</td><td>${p.location.name}</td></tr>
@@ -126,7 +151,6 @@ async function verDetalle(id) {
     }
 }
 
-// Botones de paginación
 btnAnterior.addEventListener("click", () => {
     if (paginaActual > 1) {
         cargarPersonajes(paginaActual - 1);
